@@ -20,19 +20,31 @@ import {
 import {
   getAppInfo,
   getCommitDetail,
+  getCommitGraph,
   getFileDiff,
   listBranches,
   listHistory,
   listWorktrees,
   repositoryKeys,
   type GitBranch,
+  type GitCommitGraph,
+  type GitGraphCommit,
+  type GitGraphRef,
   type GitWorktree,
   type Repository,
 } from "@/entities/repository";
+import {
+  computeGitGraphRows,
+  getMaxGraphLane,
+  type GitGraphRow,
+  type GitGraphSegment,
+} from "@/features/history-tree/model/graph-layout";
 
 type ChangesPanelProps = {
   selectedRepository?: Repository;
 };
+
+type HistoryView = "list" | "graph";
 
 type BranchTreeRow =
   | {
@@ -67,6 +79,180 @@ function getWorktreeKind(worktree: GitWorktree) {
 
 function getShortCommit(commit: string) {
   return commit.slice(0, 8);
+}
+
+function laneX(lane: number) {
+  return 10 + lane * 20;
+}
+
+function graphSegmentPath(segment: GitGraphSegment, rowHeight: number) {
+  const fromX = laneX(segment.fromLane);
+  const toX = laneX(segment.toLane);
+  const centerY = rowHeight / 2;
+
+  if (segment.type === "vertical") {
+    return `M ${fromX} 0 L ${toX} ${rowHeight}`;
+  }
+
+  if (segment.type === "vertical-top") {
+    return `M ${fromX} 0 L ${fromX} ${centerY}`;
+  }
+
+  if (segment.type === "vertical-bottom") {
+    return `M ${fromX} ${centerY} L ${fromX} ${rowHeight}`;
+  }
+
+  return `M ${fromX} ${centerY} C ${fromX} ${rowHeight}, ${toX} ${rowHeight}, ${toX} ${rowHeight}`;
+}
+
+function GraphCell({
+  maxLane,
+  row,
+  rowHeight,
+}: {
+  maxLane: number;
+  row?: GitGraphRow;
+  rowHeight: number;
+}) {
+  const width = 20 + (maxLane + 1) * 20;
+  const nodeX = row ? laneX(row.lane) : 10;
+  const centerY = rowHeight / 2;
+
+  return (
+    <svg aria-hidden className="block shrink-0" height={rowHeight} width={width}>
+      {row?.connections.map((segment, index) => (
+        <path
+          d={graphSegmentPath(segment, rowHeight)}
+          fill="none"
+          key={`${segment.type}:${segment.fromLane}:${segment.toLane}:${index}`}
+          stroke={segment.color}
+          strokeDasharray={segment.type.startsWith("merge") ? "4 3" : undefined}
+          strokeWidth="2"
+        />
+      ))}
+      {row ? (
+        row.nodeType === "head" ? (
+          <>
+            <circle cx={nodeX} cy={centerY} fill="none" r="6" stroke="currentColor" strokeWidth="2" />
+            <circle cx={nodeX} cy={centerY} fill={row.color} r="4" />
+          </>
+        ) : row.nodeType === "merge" ? (
+          <>
+            <circle cx={nodeX} cy={centerY} fill="none" r="5" stroke={row.color} strokeWidth="1.5" />
+            <circle cx={nodeX} cy={centerY} fill={row.color} r="3" />
+          </>
+        ) : (
+          <circle cx={nodeX} cy={centerY} fill={row.color} r="4" />
+        )
+      ) : null}
+    </svg>
+  );
+}
+
+function refsByTarget(refs: GitGraphRef[]) {
+  const result = new Map<string, GitGraphRef[]>();
+
+  for (const ref of refs) {
+    const existing = result.get(ref.target) ?? [];
+    existing.push(ref);
+    result.set(ref.target, existing);
+  }
+
+  return result;
+}
+
+function HistoryGraphView({
+  graph,
+  graphRefs,
+  graphRows,
+  maxGraphLane,
+  onSelectCommit,
+  selectedCommitHash,
+}: {
+  graph: GitCommitGraph;
+  graphRefs: Map<string, GitGraphRef[]>;
+  graphRows: Map<string, GitGraphRow>;
+  maxGraphLane: number;
+  onSelectCommit: (commitHash: string) => void;
+  selectedCommitHash?: string;
+}) {
+  const rowHeight = graph.layoutHints.rowHeight || 32;
+
+  return (
+    <div className="overflow-hidden rounded-md border">
+      <div className="grid grid-cols-[auto_minmax(0,1fr)_9rem_12rem] border-b bg-muted/40 px-2 py-2 text-xs font-medium text-muted-foreground">
+        <span>Graph</span>
+        <span>Commit</span>
+        <span>Author</span>
+        <span>Date</span>
+      </div>
+      <div>
+        {graph.commits.map((commit) => (
+          <HistoryGraphRow
+            commit={commit}
+            graphRefs={graphRefs.get(commit.hash) ?? []}
+            graphRow={graphRows.get(commit.hash)}
+            isSelected={commit.hash === selectedCommitHash}
+            key={commit.hash}
+            maxGraphLane={maxGraphLane}
+            onSelectCommit={onSelectCommit}
+            rowHeight={rowHeight}
+          />
+        ))}
+      </div>
+      <div className="border-t px-3 py-2 text-xs text-muted-foreground">
+        {graph.commits.length} / {graph.page.totalCount} commits loaded
+        {graph.page.hasMore ? " · more commits available" : ""}
+      </div>
+    </div>
+  );
+}
+
+function HistoryGraphRow({
+  commit,
+  graphRefs,
+  graphRow,
+  isSelected,
+  maxGraphLane,
+  onSelectCommit,
+  rowHeight,
+}: {
+  commit: GitGraphCommit;
+  graphRefs: GitGraphRef[];
+  graphRow?: GitGraphRow;
+  isSelected: boolean;
+  maxGraphLane: number;
+  onSelectCommit: (commitHash: string) => void;
+  rowHeight: number;
+}) {
+  return (
+    <button
+      aria-label={`Commit ${commit.shortHash} by ${commit.author}: ${commit.message}`}
+      className="grid w-full grid-cols-[auto_minmax(0,1fr)_9rem_12rem] items-center border-b px-2 text-left text-sm last:border-b-0 hover:bg-muted/50 data-[selected=true]:bg-muted"
+      data-selected={isSelected}
+      onClick={() => onSelectCommit(commit.hash)}
+      style={{ minHeight: rowHeight }}
+      type="button"
+    >
+      <GraphCell maxLane={maxGraphLane} row={graphRow} rowHeight={rowHeight} />
+      <span className="flex min-w-0 items-center gap-2 pr-2">
+        <span className="font-mono text-xs text-muted-foreground">{commit.shortHash}</span>
+        {graphRefs.map((ref) => (
+          <span
+            className="max-w-40 truncate rounded-sm border bg-background px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground"
+            key={`${ref.kind}:${ref.name}`}
+            title={ref.name}
+          >
+            {ref.kind === "tag" ? "tag:" : ""}
+            {ref.name}
+          </span>
+        ))}
+        <span className="min-w-0 truncate">{commit.message}</span>
+      </span>
+      <span className="truncate pr-2 text-xs text-muted-foreground">{commit.author}</span>
+      <span className="truncate font-mono text-xs text-muted-foreground">{commit.date}</span>
+    </button>
+  );
 }
 
 function buildBranchTreeRows(branches: GitBranch[]): BranchTreeRow[] {
@@ -106,6 +292,7 @@ function buildBranchTreeRows(branches: GitBranch[]): BranchTreeRow[] {
 export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
   const [selectedCommitHash, setSelectedCommitHash] = useState<string>();
   const [selectedFilePath, setSelectedFilePath] = useState<string>();
+  const [historyView, setHistoryView] = useState<HistoryView>("list");
   const appInfo = useQuery({
     queryKey: ["app-info"],
     queryFn: getAppInfo,
@@ -131,6 +318,13 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
       : ["repositories", "unselected", "history"],
     queryFn: () => listHistory(selectedRepository?.id ?? ""),
   });
+  const graphQuery = useQuery({
+    enabled: Boolean(selectedRepository),
+    queryKey: selectedRepository
+      ? repositoryKeys.commitGraph(selectedRepository.id, { maxCount: 300, offset: 0 })
+      : ["repositories", "unselected", "commitGraph"],
+    queryFn: () => getCommitGraph(selectedRepository?.id ?? "", { maxCount: 300, offset: 0 }),
+  });
   const commitDetailQuery = useQuery({
     enabled: Boolean(selectedRepository && selectedCommitHash),
     queryKey:
@@ -149,10 +343,15 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
       getFileDiff(selectedRepository?.id ?? "", selectedCommitHash ?? "", selectedFilePath ?? ""),
   });
   const branchRows = buildBranchTreeRows(branchesQuery.data ?? []);
+  const graphData = graphQuery.data;
+  const graphRows = graphData ? computeGitGraphRows(graphData.commits) : new Map<string, GitGraphRow>();
+  const maxGraphLane = getMaxGraphLane(graphRows);
+  const graphRefs = graphData ? refsByTarget(graphData.refs) : new Map<string, GitGraphRef[]>();
   const isRefreshing =
     worktreesQuery.isFetching ||
     branchesQuery.isFetching ||
     historyQuery.isFetching ||
+    graphQuery.isFetching ||
     commitDetailQuery.isFetching ||
     fileDiffQuery.isFetching;
 
@@ -191,6 +390,7 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
             void worktreesQuery.refetch();
             void branchesQuery.refetch();
             void historyQuery.refetch();
+            void graphQuery.refetch();
             if (selectedCommitHash) {
               void commitDetailQuery.refetch();
             }
@@ -317,59 +517,100 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
               )}
             </div>
             <div>
-              <div className="mb-2 flex items-center gap-2">
-                <GitCommit className="size-4 text-muted-foreground" />
-                <h3 className="text-sm font-medium">History</h3>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <GitCommit className="size-4 text-muted-foreground" />
+                  <h3 className="text-sm font-medium">History</h3>
+                </div>
+                <div className="flex rounded-md border p-0.5">
+                  <Button
+                    size="sm"
+                    variant={historyView === "list" ? "secondary" : "ghost"}
+                    onClick={() => setHistoryView("list")}
+                  >
+                    List
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={historyView === "graph" ? "secondary" : "ghost"}
+                    onClick={() => setHistoryView("graph")}
+                  >
+                    Graph
+                  </Button>
+                </div>
               </div>
-              {historyQuery.isLoading ? (
+              {historyView === "list" && historyQuery.isLoading ? (
                 <p className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="size-4 animate-spin" />
                   Loading history
                 </p>
-              ) : historyQuery.isError ? (
+              ) : historyView === "list" && historyQuery.isError ? (
                 <p className="flex items-start gap-1.5 text-sm leading-5 text-red-600">
                   <AlertCircle className="mt-0.5 size-4 shrink-0" />
                   <span>{getErrorMessage(historyQuery.error)}</span>
                 </p>
-              ) : historyQuery.data?.length === 0 ? (
+              ) : historyView === "graph" && graphQuery.isLoading ? (
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin" />
+                  Loading graph
+                </p>
+              ) : historyView === "graph" && graphQuery.isError ? (
+                <p className="flex items-start gap-1.5 text-sm leading-5 text-red-600">
+                  <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                  <span>{getErrorMessage(graphQuery.error)}</span>
+                </p>
+              ) : historyView === "list" && historyQuery.data?.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No commits found.</p>
+              ) : historyView === "graph" && graphData?.commits.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No commits found.</p>
               ) : (
                 <div className="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(360px,0.7fr)]">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-28">Hash</TableHead>
-                        <TableHead>Message</TableHead>
-                        <TableHead className="w-48">Author</TableHead>
-                        <TableHead className="w-52">Date</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {historyQuery.data?.map((commit) => {
-                        const isSelected = commit.hash === selectedCommitHash;
+                  {historyView === "graph" && graphData ? (
+                    <HistoryGraphView
+                      graph={graphData}
+                      graphRefs={graphRefs}
+                      graphRows={graphRows}
+                      maxGraphLane={maxGraphLane}
+                      onSelectCommit={setSelectedCommitHash}
+                      selectedCommitHash={selectedCommitHash}
+                    />
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-28">Hash</TableHead>
+                          <TableHead>Message</TableHead>
+                          <TableHead className="w-48">Author</TableHead>
+                          <TableHead className="w-52">Date</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {historyQuery.data?.map((commit) => {
+                          const isSelected = commit.hash === selectedCommitHash;
 
-                        return (
-                          <TableRow
-                            className="cursor-pointer data-[selected=true]:bg-muted"
-                            data-selected={isSelected}
-                            key={commit.hash}
-                            onClick={() => setSelectedCommitHash(commit.hash)}
-                          >
-                            <TableCell className="font-mono text-xs text-muted-foreground">
-                              {getShortHash(commit.hash)}
-                            </TableCell>
-                            <TableCell className="max-w-0 truncate">{commit.message}</TableCell>
-                            <TableCell className="max-w-0 truncate text-muted-foreground">
-                              {commit.author}
-                            </TableCell>
-                            <TableCell className="font-mono text-xs text-muted-foreground">
-                              {commit.date}
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
+                          return (
+                            <TableRow
+                              className="cursor-pointer data-[selected=true]:bg-muted"
+                              data-selected={isSelected}
+                              key={commit.hash}
+                              onClick={() => setSelectedCommitHash(commit.hash)}
+                            >
+                              <TableCell className="font-mono text-xs text-muted-foreground">
+                                {getShortHash(commit.hash)}
+                              </TableCell>
+                              <TableCell className="max-w-0 truncate">{commit.message}</TableCell>
+                              <TableCell className="max-w-0 truncate text-muted-foreground">
+                                {commit.author}
+                              </TableCell>
+                              <TableCell className="font-mono text-xs text-muted-foreground">
+                                {commit.date}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  )}
                   <div className="min-w-0 border-l pl-4">
                     {!selectedCommitHash ? (
                       <div className="flex min-h-60 items-center justify-center">
