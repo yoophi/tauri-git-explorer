@@ -1,8 +1,10 @@
 use std::process::Command;
 
 use crate::{
-    application::ports::{GitBranchReader, GitRepositoryValidator, GitWorktreeReader},
-    domain::{branch::GitBranch, worktree::GitWorktree},
+    application::ports::{
+        GitBranchReader, GitHistoryReader, GitRepositoryValidator, GitWorktreeReader,
+    },
+    domain::{branch::GitBranch, commit::GitCommitSummary, worktree::GitWorktree},
 };
 
 pub struct GitCliRepositoryValidator;
@@ -44,12 +46,10 @@ impl GitWorktreeReader for GitCliRepositoryValidator {
             .map_err(|error| format!("Failed to run git: {error}"))?;
 
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            return Err(if stderr.is_empty() {
-                "Failed to list Git worktrees.".to_string()
-            } else {
-                stderr
-            });
+            return Err(git_error_message(
+                &output.stderr,
+                "Failed to list Git worktrees.",
+            ));
         }
 
         let stdout = String::from_utf8(output.stdout)
@@ -73,18 +73,43 @@ impl GitBranchReader for GitCliRepositoryValidator {
             .map_err(|error| format!("Failed to run git: {error}"))?;
 
         if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            return Err(if stderr.is_empty() {
-                "Failed to list Git branches.".to_string()
-            } else {
-                stderr
-            });
+            return Err(git_error_message(
+                &output.stderr,
+                "Failed to list Git branches.",
+            ));
         }
 
         let stdout = String::from_utf8(output.stdout)
             .map_err(|error| format!("Git returned invalid UTF-8: {error}"))?;
 
         parse_branch_format(&stdout)
+    }
+}
+
+impl GitHistoryReader for GitCliRepositoryValidator {
+    fn list_history(&self, repository_path: &str) -> Result<Vec<GitCommitSummary>, String> {
+        let output = Command::new("git")
+            .args([
+                "-C",
+                repository_path,
+                "log",
+                "--max-count=100",
+                "--pretty=format:%H%x00%s%x00%an%x00%cI%x1e",
+            ])
+            .output()
+            .map_err(|error| format!("Failed to run git: {error}"))?;
+
+        if !output.status.success() {
+            return Err(git_error_message(
+                &output.stderr,
+                "Failed to list Git history.",
+            ));
+        }
+
+        let stdout = String::from_utf8(output.stdout)
+            .map_err(|error| format!("Git returned invalid UTF-8: {error}"))?;
+
+        parse_commit_history(&stdout)
     }
 }
 
@@ -118,6 +143,30 @@ fn parse_branch_format(output: &str) -> Result<Vec<GitBranch>, String> {
                 parts[2] == "*",
                 worktree_path,
             )))
+        })
+        .collect()
+}
+
+fn parse_commit_history(output: &str) -> Result<Vec<GitCommitSummary>, String> {
+    output
+        .split('\x1e')
+        .filter(|record| !record.trim().is_empty())
+        .map(|record| {
+            let fields = record
+                .trim_start_matches('\n')
+                .split('\0')
+                .collect::<Vec<_>>();
+
+            if fields.len() != 4 {
+                return Err(format!("Git history output is invalid: {record}"));
+            }
+
+            Ok(GitCommitSummary::new(
+                fields[0].to_string(),
+                fields[1].to_string(),
+                fields[2].to_string(),
+                fields[3].to_string(),
+            ))
         })
         .collect()
 }
@@ -167,6 +216,16 @@ fn parse_worktree_porcelain(output: &str) -> Result<Vec<GitWorktree>, String> {
     }
 
     Ok(worktrees)
+}
+
+fn git_error_message(stderr: &[u8], fallback: &str) -> String {
+    let stderr = String::from_utf8_lossy(stderr).trim().to_string();
+
+    if stderr.is_empty() {
+        fallback.to_string()
+    } else {
+        stderr
+    }
 }
 
 #[cfg(test)]
@@ -237,5 +296,19 @@ refs/remotes/origin/HEAD\0origin/HEAD\0 \0
         assert!(!branches[1].is_remote);
         assert_eq!(branches[2].name, "origin/main");
         assert!(branches[2].is_remote);
+    }
+
+    #[test]
+    fn parses_commit_history() {
+        let output = "\
+abc123\0Initial commit\0A Developer\02026-06-25T00:00:00+09:00\x1e
+def456\0Add feature\0B Developer\02026-06-25T01:00:00+09:00\x1e";
+
+        let commits = parse_commit_history(output).expect("history should parse");
+
+        assert_eq!(commits.len(), 2);
+        assert_eq!(commits[0].hash, "abc123");
+        assert_eq!(commits[0].message, "Initial commit");
+        assert_eq!(commits[1].author, "B Developer");
     }
 }
