@@ -1,6 +1,16 @@
-import { FormEvent, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, Check, GitBranch, History, Loader2, Plus, Search } from "lucide-react";
+import { open } from "@tauri-apps/plugin-dialog";
+import {
+  AlertCircle,
+  Check,
+  FolderOpen,
+  GitBranch,
+  History,
+  Loader2,
+  Plus,
+  Search,
+} from "lucide-react";
 import { Button } from "@yoophi/ui/components/button";
 import { Input } from "@yoophi/ui/components/input";
 import {
@@ -43,6 +53,7 @@ export function RepositorySidebar({
       onSelectRepository(repository);
     },
   });
+  const isRegistering = createRepositoryMutation.isPending;
 
   const repositories = repositoriesQuery.data ?? [];
   const visibleRepositories = useMemo(() => {
@@ -64,6 +75,29 @@ export function RepositorySidebar({
     createRepositoryMutation.mutate(path);
   }
 
+  function handlePathChange(event: ChangeEvent<HTMLInputElement>) {
+    setPath(event.target.value);
+  }
+
+  function handleSearchChange(event: ChangeEvent<HTMLInputElement>) {
+    setSearch(event.target.value);
+  }
+
+  async function handleSelectDirectory() {
+    const selectedPath = await open({
+      directory: true,
+      multiple: false,
+      title: "Select Git repository",
+    });
+
+    if (typeof selectedPath !== "string") {
+      return;
+    }
+
+    setPath(selectedPath);
+    createRepositoryMutation.mutate(selectedPath);
+  }
+
   return (
     <aside className="flex h-full min-h-0 flex-col border-r bg-sidebar">
       <header className="border-b px-3 py-3">
@@ -76,20 +110,26 @@ export function RepositorySidebar({
             <Input
               aria-label="Repository path"
               value={path}
-              onChange={(event) => setPath(event.target.value)}
+              onChange={handlePathChange}
               placeholder="/path/to/git/repo"
             />
             <Button
+              aria-label="Select repository folder"
+              disabled={isRegistering}
+              size="icon"
+              type="button"
+              variant="outline"
+              onClick={handleSelectDirectory}
+            >
+              <FolderOpen />
+            </Button>
+            <Button
               aria-label="Register repository"
-              disabled={createRepositoryMutation.isPending}
+              disabled={isRegistering}
               size="icon"
               type="submit"
             >
-              {createRepositoryMutation.isPending ? (
-                <Loader2 className="animate-spin" />
-              ) : (
-                <Plus />
-              )}
+              {isRegistering ? <Loader2 className="animate-spin" /> : <Plus />}
             </Button>
           </div>
           {createRepositoryMutation.isError ? (
@@ -104,7 +144,7 @@ export function RepositorySidebar({
           <Input
             className="pl-7"
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={handleSearchChange}
             placeholder="Search repositories"
           />
         </div>
