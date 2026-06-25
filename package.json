@@ -1,0 +1,13 @@
+{
+  "name": "tauri-git-explorer",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter desktop dev",
+    "build": "pnpm --filter desktop build",
+    "typecheck": "pnpm -r exec tsc --noEmit",
+    "tauri": "pnpm --filter desktop tauri"
+  },
+  "devDependencies": {
+    "typescript": "~5.8.3"
+  }
+}
