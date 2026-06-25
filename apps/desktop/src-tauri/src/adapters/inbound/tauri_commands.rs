@@ -5,9 +5,10 @@ use crate::{
     adapters::outbound::{
         git_cli::GitCliRepositoryValidator, json_repository_store::JsonRepositoryStore,
     },
+    application::branch_service::BranchService,
     application::repository_service::RepositoryService,
     application::worktree_service::WorktreeService,
-    domain::{repository::Repository, worktree::GitWorktree},
+    domain::{branch::GitBranch, repository::Repository, worktree::GitWorktree},
 };
 
 #[derive(Serialize)]
@@ -26,6 +27,12 @@ pub struct CreateRepositoryRequest {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ListWorktreesRequest {
+    repository_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListBranchesRequest {
     repository_id: String,
 }
 
@@ -58,6 +65,14 @@ pub fn list_worktrees(
     worktree_service(app)?.list_worktrees(request.repository_id)
 }
 
+#[tauri::command]
+pub fn list_branches(
+    app: AppHandle,
+    request: ListBranchesRequest,
+) -> Result<Vec<GitBranch>, String> {
+    branch_service(app)?.list_branches(request.repository_id)
+}
+
 fn repository_service(
     app: AppHandle,
 ) -> Result<RepositoryService<JsonRepositoryStore, GitCliRepositoryValidator>, String> {
@@ -74,6 +89,15 @@ fn worktree_service(
     let reader = GitCliRepositoryValidator;
 
     Ok(WorktreeService::new(store, reader))
+}
+
+fn branch_service(
+    app: AppHandle,
+) -> Result<BranchService<JsonRepositoryStore, GitCliRepositoryValidator>, String> {
+    let store = repository_store(app)?;
+    let reader = GitCliRepositoryValidator;
+
+    Ok(BranchService::new(store, reader))
 }
 
 fn repository_store(app: AppHandle) -> Result<JsonRepositoryStore, String> {
