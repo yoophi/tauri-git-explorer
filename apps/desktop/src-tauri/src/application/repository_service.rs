@@ -33,7 +33,11 @@ where
         }
 
         let git_root = self.validator.validate_repository(requested_path)?;
-        let repository = Repository::new(requested_path.to_string(), git_root);
+        let repository = Repository::new(
+            git_root.clone(),
+            repository_name_from_root(&git_root),
+            requested_path.to_string(),
+        );
         let mut repositories = self.store.list()?;
 
         if repositories.iter().any(|item| item.id == repository.id) {
@@ -45,6 +49,15 @@ where
 
         Ok(repository)
     }
+}
+
+fn repository_name_from_root(git_root: &str) -> String {
+    git_root
+        .trim_end_matches(['/', '\\'])
+        .rsplit(['/', '\\'])
+        .find(|segment| !segment.is_empty())
+        .unwrap_or(git_root)
+        .to_string()
 }
 
 #[cfg(test)]
@@ -130,5 +143,13 @@ mod tests {
         let result = service.create_repository("/tmp/repo".to_string());
 
         assert_eq!(result.unwrap_err(), "Repository is already registered.");
+    }
+
+    #[test]
+    fn derives_repository_name_from_windows_style_root() {
+        assert_eq!(
+            repository_name_from_root(r"C:\Users\yoophi\project\repo"),
+            "repo"
+        );
     }
 }

@@ -9,17 +9,7 @@ pub struct Repository {
 }
 
 impl Repository {
-    pub fn new(path: String, git_root: String) -> Self {
-        let name = git_root
-            .rsplit(std::path::MAIN_SEPARATOR)
-            .find(|segment| !segment.is_empty())
-            .unwrap_or(git_root.as_str())
-            .to_string();
-
-        Self {
-            id: git_root.clone(),
-            name,
-            path,
-        }
+    pub fn new(id: String, name: String, path: String) -> Self {
+        Self { id, name, path }
     }
 }
