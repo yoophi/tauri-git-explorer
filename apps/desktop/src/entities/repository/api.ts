@@ -11,8 +11,16 @@ export type Repository = {
   path: string;
 };
 
+export type GitCommitSummary = {
+  hash: string;
+  message: string;
+  author: string;
+  date: string;
+};
+
 export const repositoryKeys = {
   all: ["repositories"] as const,
+  history: (repositoryId: string) => ["repositories", repositoryId, "history"] as const,
 };
 
 export function getAppInfo() {
@@ -27,6 +35,14 @@ export function createRepository(path: string) {
   return invoke<Repository>("create_repository", {
     request: {
       path,
+    },
+  });
+}
+
+export function listHistory(repositoryId: string) {
+  return invoke<GitCommitSummary[]>("list_history", {
+    request: {
+      repositoryId,
     },
   });
 }

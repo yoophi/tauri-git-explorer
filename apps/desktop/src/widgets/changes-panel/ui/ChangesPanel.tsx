@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { FolderGit2, GitCommit, RefreshCw } from "lucide-react";
+import { AlertCircle, FolderGit2, GitCommit, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@yoophi/ui/components/button";
 import {
   Table,
@@ -9,22 +9,36 @@ import {
   TableHeader,
   TableRow,
 } from "@yoophi/ui/components/table";
-import { getAppInfo, type Repository } from "@/entities/repository";
+import {
+  getAppInfo,
+  listHistory,
+  repositoryKeys,
+  type Repository,
+} from "@/entities/repository";
 
 type ChangesPanelProps = {
   selectedRepository?: Repository;
 };
 
-const changes = [
-  { path: "apps/desktop/src/main.tsx", state: "Added", detail: "React entry point" },
-  { path: "apps/desktop/src-tauri/src/lib.rs", state: "Added", detail: "Tauri commands" },
-  { path: "packages/ui/src", state: "Added", detail: "Shared UI primitives" },
-];
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function getShortHash(hash: string) {
+  return hash.slice(0, 8);
+}
 
 export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
   const appInfo = useQuery({
     queryKey: ["app-info"],
     queryFn: getAppInfo,
+  });
+  const historyQuery = useQuery({
+    enabled: Boolean(selectedRepository),
+    queryKey: selectedRepository
+      ? repositoryKeys.history(selectedRepository.id)
+      : ["repositories", "unselected", "history"],
+    queryFn: () => listHistory(selectedRepository?.id ?? ""),
   });
 
   return (
@@ -44,8 +58,14 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
             </p>
           </div>
         </div>
-        <Button size="icon-sm" variant="outline" aria-label="Refresh">
-          <RefreshCw />
+        <Button
+          size="icon-sm"
+          variant="outline"
+          aria-label="Refresh history"
+          disabled={!selectedRepository || historyQuery.isFetching}
+          onClick={() => void historyQuery.refetch()}
+        >
+          {historyQuery.isFetching ? <Loader2 className="animate-spin" /> : <RefreshCw />}
         </Button>
       </header>
       <div className="min-h-0 flex-1 overflow-auto p-4">
@@ -59,21 +79,49 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
               </p>
             </div>
           </div>
+        ) : historyQuery.isLoading ? (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" />
+            Loading history
+          </p>
+        ) : historyQuery.isError ? (
+          <p className="flex items-start gap-1.5 text-sm leading-5 text-red-600">
+            <AlertCircle className="mt-0.5 size-4 shrink-0" />
+            <span>{getErrorMessage(historyQuery.error)}</span>
+          </p>
+        ) : historyQuery.data?.length === 0 ? (
+          <div className="flex h-full min-h-80 items-center justify-center">
+            <div className="max-w-sm text-center">
+              <GitCommit className="mx-auto size-10 text-muted-foreground" />
+              <h2 className="mt-3 text-sm font-medium">No commits found</h2>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                This repository does not have commit history to display.
+              </p>
+            </div>
+          </div>
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Path</TableHead>
-                <TableHead className="w-24">State</TableHead>
-                <TableHead>Detail</TableHead>
+                <TableHead className="w-28">Hash</TableHead>
+                <TableHead>Message</TableHead>
+                <TableHead className="w-48">Author</TableHead>
+                <TableHead className="w-52">Date</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {changes.map((change) => (
-                <TableRow key={change.path}>
-                  <TableCell className="font-mono text-xs">{change.path}</TableCell>
-                  <TableCell>{change.state}</TableCell>
-                  <TableCell className="text-muted-foreground">{change.detail}</TableCell>
+              {historyQuery.data?.map((commit) => (
+                <TableRow key={commit.hash}>
+                  <TableCell className="font-mono text-xs text-muted-foreground">
+                    {getShortHash(commit.hash)}
+                  </TableCell>
+                  <TableCell className="max-w-0 truncate">{commit.message}</TableCell>
+                  <TableCell className="max-w-0 truncate text-muted-foreground">
+                    {commit.author}
+                  </TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground">
+                    {commit.date}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

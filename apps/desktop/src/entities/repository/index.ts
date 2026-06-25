@@ -1,2 +1,2 @@
-export { createRepository, getAppInfo, listRepositories, repositoryKeys } from "./api";
-export type { AppInfo, Repository } from "./api";
+export { createRepository, getAppInfo, listHistory, listRepositories, repositoryKeys } from "./api";
+export type { AppInfo, GitCommitSummary, Repository } from "./api";

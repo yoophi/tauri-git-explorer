@@ -1,4 +1,4 @@
-use crate::domain::repository::Repository;
+use crate::domain::{commit::GitCommitSummary, repository::Repository};
 
 pub trait GitRepositoryValidator {
     fn validate_repository(&self, path: &str) -> Result<String, String>;
@@ -7,4 +7,8 @@ pub trait GitRepositoryValidator {
 pub trait RepositoryStore {
     fn list(&self) -> Result<Vec<Repository>, String>;
     fn save_all(&self, repositories: &[Repository]) -> Result<(), String>;
+}
+
+pub trait GitHistoryReader {
+    fn list_history(&self, repository_path: &str) -> Result<Vec<GitCommitSummary>, String>;
 }
