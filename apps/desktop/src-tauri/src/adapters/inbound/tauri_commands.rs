@@ -5,9 +5,13 @@ use crate::{
     adapters::outbound::{
         git_cli::GitCliRepositoryValidator, json_repository_store::JsonRepositoryStore,
     },
-    application::history_service::HistoryService,
-    application::repository_service::RepositoryService,
-    domain::{commit::GitCommitSummary, repository::Repository},
+    application::{
+        branch_service::BranchService, history_service::HistoryService,
+        repository_service::RepositoryService, worktree_service::WorktreeService,
+    },
+    domain::{
+        branch::GitBranch, commit::GitCommitSummary, repository::Repository, worktree::GitWorktree,
+    },
 };
 
 #[derive(Serialize)]
@@ -25,7 +29,7 @@ pub struct CreateRepositoryRequest {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ListHistoryRequest {
+pub struct RepositoryRequest {
     repository_id: String,
 }
 
@@ -51,9 +55,22 @@ pub fn create_repository(
 }
 
 #[tauri::command]
+pub fn list_worktrees(
+    app: AppHandle,
+    request: RepositoryRequest,
+) -> Result<Vec<GitWorktree>, String> {
+    worktree_service(app)?.list_worktrees(request.repository_id)
+}
+
+#[tauri::command]
+pub fn list_branches(app: AppHandle, request: RepositoryRequest) -> Result<Vec<GitBranch>, String> {
+    branch_service(app)?.list_branches(request.repository_id)
+}
+
+#[tauri::command]
 pub fn list_history(
     app: AppHandle,
-    request: ListHistoryRequest,
+    request: RepositoryRequest,
 ) -> Result<Vec<GitCommitSummary>, String> {
     history_service(app)?.list_history(request.repository_id)
 }
@@ -65,6 +82,24 @@ fn repository_service(
     let validator = GitCliRepositoryValidator;
 
     Ok(RepositoryService::new(store, validator))
+}
+
+fn worktree_service(
+    app: AppHandle,
+) -> Result<WorktreeService<JsonRepositoryStore, GitCliRepositoryValidator>, String> {
+    let store = repository_store(app)?;
+    let reader = GitCliRepositoryValidator;
+
+    Ok(WorktreeService::new(store, reader))
+}
+
+fn branch_service(
+    app: AppHandle,
+) -> Result<BranchService<JsonRepositoryStore, GitCliRepositoryValidator>, String> {
+    let store = repository_store(app)?;
+    let reader = GitCliRepositoryValidator;
+
+    Ok(BranchService::new(store, reader))
 }
 
 fn history_service(
