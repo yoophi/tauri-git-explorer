@@ -2,10 +2,11 @@
   "name": "tauri-git-explorer",
   "private": true,
   "scripts": {
-    "dev": "pnpm --filter desktop dev",
+    "dev": "node scripts/tauri-dev.mjs",
     "build": "pnpm --filter desktop build",
     "typecheck": "pnpm -r exec tsc --noEmit",
-    "tauri": "pnpm --filter desktop tauri"
+    "tauri": "pnpm --filter desktop tauri",
+    "tauri:dev": "node scripts/tauri-dev.mjs"
   },
   "devDependencies": {
     "typescript": "~5.8.3"
