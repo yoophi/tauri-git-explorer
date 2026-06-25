@@ -4,6 +4,8 @@
   "scripts": {
     "dev": "node scripts/tauri-dev.mjs",
     "build": "pnpm --filter desktop build",
+    "storybook": "pnpm --filter desktop storybook",
+    "build-storybook": "pnpm --filter desktop build-storybook",
     "typecheck": "pnpm -r exec tsc --noEmit",
     "tauri": "pnpm --filter desktop tauri",
     "tauri:dev": "node scripts/tauri-dev.mjs"
