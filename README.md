@@ -1,0 +1,1 @@
+tauri-git-explorer
