@@ -5,9 +5,10 @@ use crate::{
     adapters::outbound::{
         git_cli::GitCliRepositoryValidator, json_repository_store::JsonRepositoryStore,
     },
-    application::branch_service::BranchService,
-    application::repository_service::RepositoryService,
-    application::worktree_service::WorktreeService,
+    application::{
+        branch_service::BranchService, repository_service::RepositoryService,
+        worktree_service::WorktreeService,
+    },
     domain::{branch::GitBranch, repository::Repository, worktree::GitWorktree},
 };
 

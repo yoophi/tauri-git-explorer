@@ -135,10 +135,10 @@ export function ChangesPanel({ selectedRepository }: ChangesPanelProps) {
           </div>
         </div>
         <Button
-          size="icon-sm"
-          variant="outline"
           aria-label="Refresh repository data"
           disabled={!selectedRepository || isRefreshing}
+          size="icon-sm"
+          variant="outline"
           onClick={() => {
             void worktreesQuery.refetch();
             void branchesQuery.refetch();
