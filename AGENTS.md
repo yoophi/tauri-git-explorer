@@ -27,3 +27,9 @@
 - 저장소는 단일 JSON 파일을 사용한다.
 - Rust outbound adapter가 JSON 파일 읽기/쓰기를 담당한다.
 - 도메인 및 application/service 계층은 JSON 파일 형식에 직접 의존하지 않고 repository port를 통해 접근한다.
+
+## Documentation
+
+- `docs/*.md` 문서 파일명은 영어 kebab-case를 사용한다.
+- 문서 본문은 한국어로 작성한다.
+- 아키텍처, 실행 흐름, 상태 전이, 의존 관계를 시각화할 때는 Mermaid.js 코드블록을 사용한다.
