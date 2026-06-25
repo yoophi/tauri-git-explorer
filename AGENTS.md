@@ -33,3 +33,14 @@
 - `docs/*.md` 문서 파일명은 영어 kebab-case를 사용한다.
 - 문서 본문은 한국어로 작성한다.
 - 아키텍처, 실행 흐름, 상태 전이, 의존 관계를 시각화할 때는 Mermaid.js 코드블록을 사용한다.
+
+## Storybook
+
+- Storybook은 atomic design 규칙에 따라 구성한다.
+  - `Atoms`는 단일 primitive, 입력, 버튼, 아이콘성 표시 요소를 다룬다.
+  - `Molecules`는 여러 primitive를 조합한 데이터 표시, 입력 그룹, 테이블, 패널 단위를 다룬다.
+  - `Organisms`는 feature/widget 수준의 사용자 워크플로와 여러 entity 데이터를 조합한 컴포넌트를 다룬다.
+  - `Pages`는 route 단위 화면 조립 결과를 다룬다.
+- 새로운 React 컴포넌트를 생성할 때는 Storybook에 등록한다.
+- Storybook에 컴포넌트를 추가할 때는 컴포넌트가 처리하는 데이터의 종류와 상태를 알기 쉽도록 다양한 샘플을 포함한다.
+  - 예: empty/loading/error, 긴 경로/긴 이름, 추가/수정/삭제/이름 변경 상태, 로컬/원격 브랜치, main/linked worktree.
